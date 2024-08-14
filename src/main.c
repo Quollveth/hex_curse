@@ -128,6 +128,47 @@ int dumpWholeFile(FILE *file, size_t filesize) {
 	return 0;
 }
 
+struct fileData {
+	FILE *fp;
+	size_t size;
+};
+
+int openFile(struct fileData *returnData, char *name) {
+	if (strlen(name) > MAX_FILENAME - 1) {
+		fprintf(stderr, "Filename exceeds maximum length of %d characters.\n", MAX_FILENAME);
+		return 1;
+	}
+
+	FILE *file = fopen(name, "rb");
+	if (file == NULL) {
+		fprintf(stderr, "Error opening file %s: %s\n", name, strerror(errno));
+		return 1;
+	}
+
+	// Get file metadata and do nothing with it as only care about the size
+
+	struct stat buf;
+
+	int fd = fileno(file);
+	if (fd == -1 || fstat(fd, &buf) != 0) {
+		fprintf(stderr, "Error processing file %s: %s\n", name, strerror(errno));
+		fclose(file);
+		return 1;
+	}
+	off_t filesize = buf.st_size;
+
+	if (filesize == 0) {
+		fprintf(stderr, "Error processing file %s: File is empty\n", name);
+		fclose(file);
+		return 1;
+	}
+
+	returnData->fp = file;
+	returnData->size = filesize;
+
+	return 0;
+}
+
 int main(int argc, char **argv) {
 	// Verify usage
 
@@ -140,48 +181,19 @@ int main(int argc, char **argv) {
 	// The program currently does not have any arguments, but they will be here
 	// TODO: Arguments
 
-	// Get the file name somewhere more convenient than argv[1]
-
-	if (strlen(argv[1]) > MAX_FILENAME - 1) {
-		fprintf(stderr, "Filename exceeds maximum length of %d characters.\n", MAX_FILENAME);
+	struct fileData fd;
+	if (openFile(&fd, argv[1]))
 		return 1;
-	}
-	char filename[MAX_FILENAME];
-	strcpy(filename, argv[1]);
-
-	FILE *file = fopen(filename, "rb");
-	if (file == NULL) {
-		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
-		return 1;
-	}
-
-	// Get file metadata and do nothing with it as only care about the size
-
-	struct stat buf;
-
-	int fd = fileno(file);
-	if (fd == -1 || fstat(fd, &buf) != 0) {
-		fprintf(stderr, "Error processing file %s: %s\n", filename, strerror(errno));
-		fclose(file);
-		return 1;
-	}
-	off_t filesize = buf.st_size;
-
-	if (filesize == 0) {
-		fprintf(stderr, "Error processing file %s: File is empty\n", filename);
-		fclose(file);
-		return 1;
-	}
 
 	int dumpResult;
 
 	// If the file is smaller than our max read we can read it all at once
-	if (filesize > MAX_READ_SIZE) {
-		dumpResult = dumpInChunks(file, filesize);
+	if (fd.size > MAX_READ_SIZE) {
+		dumpResult = dumpInChunks(fd.fp, fd.size);
 	} else {
-		dumpResult = dumpWholeFile(file, filesize);
+		dumpResult = dumpWholeFile(fd.fp, fd.size);
 	}
 
-	fclose(file);
+	fclose(fd.fp);
 	return dumpResult;
 }
