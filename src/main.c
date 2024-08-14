@@ -6,7 +6,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 // Maximum path name length on linux systems
 #define MAX_FILENAME 4096
@@ -15,7 +14,92 @@
 // if the file is bigger than this it will be read in chunks
 // since we malloc for the entire file when smaller than this lets not make this value too unreasonable
 #define MAX_READ_SIZE (64 * 1024)
+// How many bytes will be shown per line on the printout
 #define BYTESPERLINE 8
+
+// Given a byte array print it to screen with formatting
+// startingOffset controls the first line number
+void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset);
+
+// Hexdump a file allocating chunks no bigger than MAX_READ_SIZE bytes
+int dumpInChunks(FILE *file, size_t filesize);
+
+// Hexdump a file allocating memory for the whole file
+// Errors if file is bigger than MAX_READ_SIZE
+int dumpWholeFile(FILE *file, size_t filesize);
+
+struct fileData {
+	FILE *fp;
+	size_t size;
+};
+// Opens and validates a file with given path
+// Returns success status and places file data in returnData
+int openFile(struct fileData *returnData, char *name);
+
+int main(int argc, char **argv) {
+	// Verify usage
+
+	if (argc == 1) {
+		fprintf(stderr, "No file name provided!\n");
+		return 1;
+	}
+
+	// Argument parsing
+	// The program currently does not have any arguments, but they will be here
+	// TODO: Arguments
+
+	struct fileData fd;
+	if (openFile(&fd, argv[1]))
+		return 1;
+
+	int dumpResult;
+
+	// If the file is smaller than our max read we can read it all at once
+	if (fd.size > MAX_READ_SIZE) {
+		dumpResult = dumpInChunks(fd.fp, fd.size);
+	} else {
+		dumpResult = dumpWholeFile(fd.fp, fd.size);
+	}
+
+	fclose(fd.fp);
+	return dumpResult;
+}
+
+int openFile(struct fileData *returnData, char *name) {
+	if (strlen(name) > MAX_FILENAME - 1) {
+		fprintf(stderr, "Filename exceeds maximum length of %d characters.\n", MAX_FILENAME);
+		return 1;
+	}
+
+	FILE *file = fopen(name, "rb");
+	if (file == NULL) {
+		fprintf(stderr, "Error opening file %s: %s\n", name, strerror(errno));
+		return 1;
+	}
+
+	// Get file metadata and do nothing with it as only care about the size
+
+	struct stat buf;
+
+	int fd = fileno(file);
+	if (fd == -1 || fstat(fd, &buf) != 0) {
+		fprintf(stderr, "Error processing file %s: %s\n", name, strerror(errno));
+		fclose(file);
+		return 1;
+	}
+	off_t filesize = buf.st_size;
+
+	if (filesize == 0) {
+		fprintf(stderr, "Error processing file %s: File is empty\n", name);
+		fclose(file);
+		return 1;
+	}
+
+	returnData->fp = file;
+	returnData->size = filesize;
+
+	return 0;
+}
 
 void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset) {
 	size_t offset = startingOffset / 16;
@@ -57,6 +141,7 @@ void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset) {
 		offset++;
 	}
 }
+
 int dumpInChunks(FILE *file, size_t filesize) {
 	// Read a MAX_READ chunk
 	// Process it
@@ -101,6 +186,11 @@ int dumpWholeFile(FILE *file, size_t filesize) {
 	// Read 1 filesize sized elements
 	// Since fread returns the number of elements read it should be equal to 1
 
+	if (filesize > MAX_READ_SIZE) {
+		fprintf(stderr, "Memory allocation for file failed: File too big to dump as single chunk");
+		return 1;
+	}
+
 	uint8_t *fileData = (uint8_t *)malloc(filesize);
 	if (fileData == NULL) {
 		fprintf(stderr, "Memory allocation for file data failed.\n");
@@ -126,74 +216,4 @@ int dumpWholeFile(FILE *file, size_t filesize) {
 	free(fileData);
 
 	return 0;
-}
-
-struct fileData {
-	FILE *fp;
-	size_t size;
-};
-
-int openFile(struct fileData *returnData, char *name) {
-	if (strlen(name) > MAX_FILENAME - 1) {
-		fprintf(stderr, "Filename exceeds maximum length of %d characters.\n", MAX_FILENAME);
-		return 1;
-	}
-
-	FILE *file = fopen(name, "rb");
-	if (file == NULL) {
-		fprintf(stderr, "Error opening file %s: %s\n", name, strerror(errno));
-		return 1;
-	}
-
-	// Get file metadata and do nothing with it as only care about the size
-
-	struct stat buf;
-
-	int fd = fileno(file);
-	if (fd == -1 || fstat(fd, &buf) != 0) {
-		fprintf(stderr, "Error processing file %s: %s\n", name, strerror(errno));
-		fclose(file);
-		return 1;
-	}
-	off_t filesize = buf.st_size;
-
-	if (filesize == 0) {
-		fprintf(stderr, "Error processing file %s: File is empty\n", name);
-		fclose(file);
-		return 1;
-	}
-
-	returnData->fp = file;
-	returnData->size = filesize;
-
-	return 0;
-}
-
-int main(int argc, char **argv) {
-	// Verify usage
-
-	if (argc == 1) {
-		fprintf(stderr, "No file name provided!\n");
-		return 1;
-	}
-
-	// Argument parsing
-	// The program currently does not have any arguments, but they will be here
-	// TODO: Arguments
-
-	struct fileData fd;
-	if (openFile(&fd, argv[1]))
-		return 1;
-
-	int dumpResult;
-
-	// If the file is smaller than our max read we can read it all at once
-	if (fd.size > MAX_READ_SIZE) {
-		dumpResult = dumpInChunks(fd.fp, fd.size);
-	} else {
-		dumpResult = dumpWholeFile(fd.fp, fd.size);
-	}
-
-	fclose(fd.fp);
-	return dumpResult;
 }
