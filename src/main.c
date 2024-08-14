@@ -14,7 +14,7 @@
 // The maximum number of bytes we are going to read at once
 // if the file is bigger than this it will be read in chunks
 // since we malloc for the entire file when smaller than this lets not make this value too unreasonable
-#define MAX_READ_SIZE (2 * 1024)
+#define MAX_READ_SIZE (64 * 1024)
 #define BYTESPERLINE 8
 
 void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset) {
