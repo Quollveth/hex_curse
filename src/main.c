@@ -6,6 +6,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+//
+#include <ncurses.h>
 
 // Maximum path name length on linux systems
 #define MAX_FILENAME 4096
@@ -16,6 +18,10 @@
 #define MAX_READ_SIZE (64 * 1024)
 // How many bytes will be shown per line on the printout
 #define BYTESPERLINE 8
+
+/* ------------------
+        HEX DUMP
+------------------ */
 
 // Given a byte array print it to screen with formatting
 // startingOffset controls the first line number
@@ -28,6 +34,10 @@ int dumpInChunks(FILE *file, size_t filesize);
 // Errors if file is bigger than MAX_READ_SIZE
 int dumpWholeFile(FILE *file, size_t filesize);
 
+/* ----------------------
+        FILE HANDLING
+---------------------- */
+
 struct fileData {
 	FILE *fp;
 	size_t size;
@@ -35,6 +45,17 @@ struct fileData {
 // Opens and validates a file with given path
 // Returns success status and places file data in returnData
 int openFile(struct fileData *returnData, char *name);
+
+/* ----------------
+        NCURSES
+-----------------*/
+// Initializes a ncurses window with all required setup
+// Returns success status and sets returnWin pointer
+int initializeWindow(WINDOW **returnWin);
+
+/* -------------------
+        ENTRYPOINT
+-------------------- */
 
 int main(int argc, char **argv) {
 	// Verify usage
@@ -44,14 +65,27 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	if (argc > 2) {
+		fprintf(stderr, "Too many arguments!\n");
+		return 1;
+	}
+
 	// Argument parsing
 	// The program currently does not have any arguments, but they will be here
 	// TODO: Arguments
 
 	struct fileData fd;
-	if (openFile(&fd, argv[1]))
+	if (openFile(&fd, argv[1])) {
+		// No error printing in here since openFile will print it's own errors to stderr
 		return 1;
+	}
 
+	// Wait until all validation before initializa the window
+	WINDOW *win = NULL;
+	if (initializeWindow(&win) || win == NULL) {
+		fprintf(stderr, "Failed to initialize curses\n");
+		return 1;
+	}
 	int dumpResult;
 
 	// If the file is smaller than our max read we can read it all at once
@@ -61,8 +95,33 @@ int main(int argc, char **argv) {
 		dumpResult = dumpWholeFile(fd.fp, fd.size);
 	}
 
+	getch();
+
 	fclose(fd.fp);
+	getch();
+
+	endwin();
+
 	return dumpResult;
+}
+
+/*-------------------------------
+        FUNCTION DEFINITIONS
+-------------------------------*/
+int initializeWindow(WINDOW **returnWin) {
+	WINDOW *main = initscr();
+	if (main == NULL) {
+		return 1;
+	}
+
+	raw();
+	noecho();
+	curs_set(0);
+	keypad(stdscr, TRUE);
+
+	*returnWin = main;
+
+	return 0;
 }
 
 int openFile(struct fileData *returnData, char *name) {
@@ -107,39 +166,39 @@ void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset) {
 
 	for (size_t i = 0; i < chunkSize; i += charsPerLine) {
 		// Line number
-		printf("%07zx ", offset * charsPerLine);
+		printw("%07zx ", offset * charsPerLine);
 
 		// Bytes
 		size_t j;
 		for (j = 0; j < charsPerLine && (i + j) < chunkSize; ++j) {
-			printf("%02x", chunk[i + j]);
+			printw("%02x", chunk[i + j]);
 			if (j % 2 == 1) {
-				printf(" ");
+				printw(" ");
 			}
 		}
 
 		// If we didn't print a full line, pad with spaces
 		for (; j < charsPerLine; ++j) {
-			printf("  ");
+			printw("  ");
 			if (j % 2 == 1) {
-				printf(" ");
+				printw(" ");
 			}
 		}
 
-		printf("| ");
+		printw("| ");
 
 		// ASCII
 		for (j = 0; j < charsPerLine && (i + j) < chunkSize; ++j) {
 			if (isprint(chunk[i + j])) {
-				printf("%c", chunk[i + j]);
+				printw("%c", chunk[i + j]);
 			} else {
-				printf(".");
+				printw(".");
 			}
 		}
-
-		printf("\n");
+		printw("\n");
 		offset++;
 	}
+	refresh();
 }
 
 int dumpInChunks(FILE *file, size_t filesize) {
