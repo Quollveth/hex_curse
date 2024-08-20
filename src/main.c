@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <locale.h>
 #include <ncurses.h>
+#include <stdio.h>
 #include <string.h>
 
 void printer(char *str) { printw("%s", str); }

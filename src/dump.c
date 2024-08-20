@@ -49,10 +49,6 @@ void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset, void (*c
 	size_t offset = startingOffset / 16;
 	size_t charsPerLine = BYTESPERLINE * 2;
 
-	// For scenarios where we always print the same string (for formatting) we can pass it directly to the callback
-	// function For scenatios where the printed string is dynamic (uses format) we use snprintf to pass it into the
-	// proper buffer
-
 	// Line number is always 7 digits + space + NULL
 	char lineNumBuffer[9];
 	// Each byte printed is just 2 characters, + NULL
@@ -68,7 +64,6 @@ void dumpChunk(uint8_t *chunk, size_t chunkSize, size_t startingOffset, void (*c
 		// Bytes
 		size_t j;
 		for (j = 0; j < charsPerLine && (i + j) < chunkSize; ++j) {
-
 			snprintf(bytesBuffer, 3, "%02x", chunk[i + j]);
 			callback(bytesBuffer);
 

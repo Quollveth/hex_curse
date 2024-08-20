@@ -3,7 +3,6 @@
 
 WINDOW *hexWindow, *textWindow, *statusBar;
 
-#define WINDOWGAP 1 // Gap between windows -> columns
 #define BARHEIGHT 2 // Height of the status bar -> lines
 
 inline static void refreshAll() {
@@ -34,11 +33,9 @@ int initUI(void) {
 	keypad(stdscr, TRUE);
 	refresh();
 
-	int halfCols = (COLS - WINDOWGAP) / 2;
-
 	hexWindow = createWindow(
 		LINES - BARHEIGHT, // nlines
-		halfCols,		   // ncols
+		COLS / 2,		   // ncols
 		0,				   // y
 		0,				   // x
 		TRUE			   // border
@@ -46,11 +43,11 @@ int initUI(void) {
 	if (hexWindow == NULL) return ERR;
 
 	textWindow = createWindow(
-		LINES - BARHEIGHT,	  // nlines
-		halfCols,			  // ncols
-		0,					  // y
-		halfCols + WINDOWGAP, // x
-		TRUE				  // border
+		LINES - BARHEIGHT, // nlines
+		COLS / 2,		   // ncols
+		0,				   // y
+		COLS / 2,		   // x
+		TRUE			   // border
 	);
 	if (textWindow == NULL) return ERR;
 
