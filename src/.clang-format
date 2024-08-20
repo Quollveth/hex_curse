@@ -1,5 +1,9 @@
 BasedOnStyle:  LLVM
 IndentWidth:     4
 TabWidth:        4
-UseTab:          ForIndentation
+UseTab:          Always
 ColumnLimit:     120
+BinPackArguments: false
+BinPackParameters: false
+AlignAfterOpenBracket: BlockIndent
+AllowShortIfStatementsOnASingleLine: WithoutElse

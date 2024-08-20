@@ -1,15 +1,14 @@
 #include "dump.h"
 #include "tui.h"
 #include <errno.h>
+#include <locale.h>
+#include <ncurses.h>
 #include <string.h>
 
-// Initializes a ncurses window with all required setup
-// Returns success status and sets returnWin pointer
-
-void printer(char *str) { printf("%s", str); }
+void printer(char *str) { printw("%s", str); }
 
 int main(int argc, char **argv) {
-	// Verify usage
+	setlocale(LC_ALL, "");
 
 	if (argc == 1) {
 		fprintf(stderr, "No file name provided!\n");
@@ -29,11 +28,19 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	int dumpResult = dumpFile(&fd, &printer);
+	/* int dumpResult = dumpFile(&fd, &printer); */
 
-	getch();
+	int ch;
+	while (TRUE) {
+		ch = getch();
+
+		if (ch == KEY_F(1)) {
+			break;
+		}
+	}
+
 	fclose(fd.fp);
 	endUI();
 
-	return dumpResult;
+	return 0;
 }
