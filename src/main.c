@@ -1,47 +1,103 @@
-#include "dump.h"
-#include "tui.h"
+#include <curses.h>
 #include <errno.h>
-#include <locale.h>
 #include <ncurses.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
-void printer(char *str) { printw("%s", str); }
+struct {
+	uint8_t **lines;
+	size_t viewStart;
+	int viewSize;
+} screenData;
+
+WINDOW *borderWin, *contentWin;
+
+void cleanup(void) { endwin(); }
+
+void placeholder() {
+	const int lines = 50;
+	const int lineSize = 10;
+
+	screenData.lines = (uint8_t **)malloc(sizeof(uint8_t *) * lines);
+
+	for (int i = 0; i < lines; i++) {
+		screenData.lines[i] = (uint8_t *)malloc(sizeof(uint8_t) * lineSize);
+		for (int j = 0; j < lineSize; j++) {
+			screenData.lines[i][j] = 'A';
+		}
+	}
+}
+
+void updateView() {}
 
 int main(int argc, char **argv) {
-	setlocale(LC_ALL, "");
+	int err;
+	atexit(cleanup);
+
+	goto skipfile;
+	/*---------------------
+		ARGUMENT PARSING
+	---------------------*/
 
 	if (argc == 1) {
-		fprintf(stderr, "No file name provided!\n");
+		fprintf(stderr, "No file provided\n");
 		return 1;
 	}
 
-	// TODO: Arguments
+	/*----------------
+		FILE OPENING
+	----------------*/
 
-	if (initUI() != 0) {
-		printf("Error initializing UI: %s", strerror(errno));
+	FILE *file = fopen(argv[1], "rb");
+
+	if (file == NULL) {
+		fprintf(stderr, "Error opening file: %s\n", strerror(errno));
 		return 1;
 	}
 
-	struct fileData fd;
-	if (openFile(&fd, argv[1])) {
-		// No error printing in here since openFile will print it's own errors to stderr
-		return 1;
-	}
+	struct stat st;
 
-	/* int dumpResult = dumpFile(&fd, &printer); */
+	err = fstat(file->_fileno, &st);
+	if (err == ERR) return 1;
+
+	size_t filesize = st.st_size;
+
+skipfile:
+
+	/*---------------------
+		WINDOW MANAGING
+	----------------------*/
+
+	initscr();
+	noecho();
+	raw();
+	noqiflush();
+	keypad(stdscr, TRUE);
+
+	borderWin = newwin(
+		LINES, // nlines
+		COLS,  // ncols
+		0,	   // ypos
+		0	   // xpos
+	);
+	contentWin = newwin(LINES - 2, COLS - 2, 1, 1);
+	if (borderWin == NULL || contentWin == NULL) return 1;
+
+	box(borderWin, 0, 0);
+
+	refresh();
+	wrefresh(borderWin);
+
+	placeholder();
 
 	int ch;
 	while (TRUE) {
 		ch = getch();
-
 		if (ch == KEY_F(1)) {
 			break;
 		}
 	}
-
-	fclose(fd.fp);
-	endUI();
-
-	return 0;
 }
