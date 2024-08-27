@@ -71,11 +71,41 @@ void updateView() {
 	}
 }
 
+int initializeWindow() {
+	initscr();
+	noecho();
+	raw();
+	noqiflush();
+	keypad(stdscr, TRUE);
+
+	screenData.viewStart = 20;
+	screenData.viewSize = LINES - 2;
+	screenData.cursorY = 0;
+	screenData.cursorX = 0;
+
+	borderWin = newwin(LINES, COLS, 0, 0);
+
+	contentWin = newwin(LINES - 2, COLS - 2, 1, 1);
+	if (borderWin == NULL || contentWin == NULL) return 1;
+
+	box(borderWin, 0, 0);
+
+	refresh();
+	wrefresh(borderWin);
+
+	placeholder();
+	updateView();
+
+	wmove(contentWin, screenData.cursorY, screenData.cursorX);
+	wrefresh(contentWin);
+
+	return OK;
+}
+
 int main(int argc, char **argv) {
 	int err;
 	atexit(cleanup);
 
-	goto skipfile;
 	/*---------------------
 		ARGUMENT PARSING
 	---------------------*/
@@ -85,6 +115,9 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	/// Window
+	err = initializeWindow();
+	if (err == ERR) return 1;
 	/*----------------
 		FILE OPENING
 	----------------*/
@@ -101,46 +134,11 @@ int main(int argc, char **argv) {
 	err = fstat(file->_fileno, &st);
 	if (err == ERR) return 1;
 
-	//	size_t filesize = st.st_size;
+	size_t filesize = st.st_size;
 
-skipfile:
-
-	/*---------------------
-		WINDOW MANAGING
-	----------------------*/
-
-	initscr();
-	noecho();
-	raw();
-	noqiflush();
-	keypad(stdscr, TRUE);
-
-	screenData.viewStart = 20;
-	screenData.viewSize = LINES - 2;
-	screenData.cursorY = 0;
-	screenData.cursorX = 0;
-
-	borderWin = newwin(
-		LINES, // nlines
-		COLS,  // ncols
-		0,	   // ypos
-		0	   // xpos
-	);
-
-	contentWin = newwin(LINES - 2, COLS - 2, 1, 1);
-	if (borderWin == NULL || contentWin == NULL) return 1;
-
-	box(borderWin, 0, 0);
-
-	refresh();
-	wrefresh(borderWin);
-
-	placeholder();
-	updateView();
-
-	wmove(contentWin, screenData.cursorY, screenData.cursorX);
-	wrefresh(contentWin);
-
+	/*-------------
+		CONTROLS
+	---------------*/
 	int ch;
 	while ((ch = getch()) != EditorQuit) {
 		switch (ch) {
@@ -161,7 +159,7 @@ skipfile:
 			if (screenData.cursorY == WIN_Y) {
 				// if we can't scroll down do nothing
 				// TODO: change to not be a hardcoded value
-				if (screenData.viewStart == nLines) {
+				if (screenData.viewStart == nLines - 1) {
 					break;
 				}
 				screenData.viewStart++;
