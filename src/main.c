@@ -8,30 +8,43 @@
 #include <sys/stat.h>
 
 struct {
-	uint8_t **lines;
+	char **lines;
 	size_t viewStart;
-	int viewSize;
+	unsigned int viewSize;
 } screenData;
 
 WINDOW *borderWin, *contentWin;
 
 void cleanup(void) { endwin(); }
 
+const unsigned int nLines = 100;
 void placeholder() {
-	const int lines = 50;
-	const int lineSize = 10;
+	const char theline[10] = "   Test\0";
+	int lineSize = strlen(theline) + 1;
 
-	screenData.lines = (uint8_t **)malloc(sizeof(uint8_t *) * lines);
+	screenData.lines = (char **)malloc(sizeof(char *) * nLines);
 
-	for (int i = 0; i < lines; i++) {
-		screenData.lines[i] = (uint8_t *)malloc(sizeof(uint8_t) * lineSize);
-		for (int j = 0; j < lineSize; j++) {
-			screenData.lines[i][j] = 'A';
-		}
+	for (unsigned int i = 0; i < nLines; i++) {
+		screenData.lines[i] = (char *)malloc(sizeof(char) * lineSize);
+		strcpy(screenData.lines[i], theline);
+		screenData.lines[i][1] = (i % 10) + '0';
+		screenData.lines[i][0] = (i / 10) + '0';
 	}
 }
 
-void updateView() {}
+void updateView() {
+	werase(contentWin);
+	// clang-format off
+	for (
+		size_t i = screenData.viewStart;
+		i < screenData.viewStart + screenData.viewSize && i < nLines;
+		i++
+	) {
+		// clang-format on
+		wprintw(contentWin, "%s\n", screenData.lines[i]);
+	}
+	wrefresh(contentWin);
+}
 
 int main(int argc, char **argv) {
 	int err;
@@ -63,7 +76,7 @@ int main(int argc, char **argv) {
 	err = fstat(file->_fileno, &st);
 	if (err == ERR) return 1;
 
-	size_t filesize = st.st_size;
+	//	size_t filesize = st.st_size;
 
 skipfile:
 
@@ -77,12 +90,16 @@ skipfile:
 	noqiflush();
 	keypad(stdscr, TRUE);
 
+	screenData.viewStart = 20;
+	screenData.viewSize = LINES - 2;
+
 	borderWin = newwin(
 		LINES, // nlines
 		COLS,  // ncols
 		0,	   // ypos
 		0	   // xpos
 	);
+
 	contentWin = newwin(LINES - 2, COLS - 2, 1, 1);
 	if (borderWin == NULL || contentWin == NULL) return 1;
 
@@ -92,12 +109,23 @@ skipfile:
 	wrefresh(borderWin);
 
 	placeholder();
+	updateView();
 
 	int ch;
 	while (TRUE) {
+		updateView();
+
 		ch = getch();
 		if (ch == KEY_F(1)) {
 			break;
+		}
+
+		if (ch == 'j') {
+			screenData.viewStart++;
+		}
+
+		if (ch == 'k') {
+			screenData.viewStart--;
 		}
 	}
 }
