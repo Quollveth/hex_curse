@@ -7,10 +7,25 @@
 #include <string.h>
 #include <sys/stat.h>
 
+// Compensate for the character border around
+// While we can use the stats of the content window itself
+// it's more convenient to have the global values be correct
+#define WIN_Y LINES - 3
+#define WIN_X COLS - 2
+
+enum EditorKeys {
+	EditorQuit = KEY_F(1),
+	EditorCursorUp = 'k',
+	EditorCursorDown = 'j',
+	EditorCursorLeft = 'l',
+	EditorCursorRight = 'h',
+};
+
 struct {
 	char **lines;
 	size_t viewStart;
 	unsigned int viewSize;
+	int cursorX, cursorY;
 } screenData;
 
 WINDOW *borderWin, *contentWin;
@@ -33,6 +48,17 @@ void placeholder() {
 }
 
 void updateView() {
+	static unsigned int lastViewSize = 0;
+	static unsigned int lastViewStart = 0;
+
+	if (screenData.viewSize == lastViewSize && screenData.viewStart == lastViewStart) {
+		// No change from last time
+		return;
+	}
+
+	lastViewStart = screenData.viewStart;
+	lastViewSize = screenData.viewSize;
+
 	werase(contentWin);
 	// clang-format off
 	for (
@@ -43,7 +69,6 @@ void updateView() {
 		// clang-format on
 		wprintw(contentWin, "%s\n", screenData.lines[i]);
 	}
-	wrefresh(contentWin);
 }
 
 int main(int argc, char **argv) {
@@ -92,6 +117,8 @@ skipfile:
 
 	screenData.viewStart = 20;
 	screenData.viewSize = LINES - 2;
+	screenData.cursorY = 0;
+	screenData.cursorX = 0;
 
 	borderWin = newwin(
 		LINES, // nlines
@@ -111,21 +138,53 @@ skipfile:
 	placeholder();
 	updateView();
 
-	int ch;
-	while (TRUE) {
-		updateView();
+	wmove(contentWin, screenData.cursorY, screenData.cursorX);
+	wrefresh(contentWin);
 
-		ch = getch();
-		if (ch == KEY_F(1)) {
+	int ch;
+	while ((ch = getch()) != EditorQuit) {
+		switch (ch) {
+		case EditorCursorUp:
+			// if at first line scroll up
+			if (screenData.cursorY == 0) {
+				// if we can't scroll up do nothing
+				if (screenData.viewStart == 0) {
+					break;
+				}
+				screenData.viewStart--;
+				break;
+			}
+			screenData.cursorY--;
+			break;
+		case EditorCursorDown:
+			// if at last line scroll down
+			if (screenData.cursorY == WIN_Y) {
+				// if we can't scroll down do nothing
+				// TODO: change to not be a hardcoded value
+				if (screenData.viewStart == nLines) {
+					break;
+				}
+				screenData.viewStart++;
+				break;
+			}
+			screenData.cursorY++;
+			break;
+		case EditorCursorLeft:
+			if (screenData.cursorX == WIN_X) {
+				break;
+			}
+			screenData.cursorX++;
+			break;
+		case EditorCursorRight:
+			if (screenData.cursorX == 0) {
+				break;
+			}
+			screenData.cursorX--;
 			break;
 		}
-
-		if (ch == 'j') {
-			screenData.viewStart++;
-		}
-
-		if (ch == 'k') {
-			screenData.viewStart--;
-		}
+		updateView();
+		wmove(contentWin, screenData.cursorY, screenData.cursorX);
+		wrefresh(contentWin);
 	}
+	cleanup();
 }
