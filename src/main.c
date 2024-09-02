@@ -23,27 +23,43 @@ enum editorKeys {
 	EditorCursorRight = 'h',
 };
 
+// -------- global state -----------
+
+// Passed as commandline arguments
 struct {
 	int bytesPerLine;
 	char *filename;
 } editorSettings;
 
+// Contains dumped data of the file
+// nLines is used to know how much we can show on the screen for scrolling purposes
 struct {
 	uint8_t *fileData;
 	size_t filesize, nLines;
 } fileData;
 
+// Contains data about the screen
+// viewStart is the position in the file where we start showing the lines
+// viewSize is how much we show and depends on screen size
 struct {
 	size_t viewStart;
 	int viewSize, cursorX, cursorY;
 } screenData;
 
+// Instead of offsetting based on the border characters when writing to a screen
+// we just have two windows per window, one with the border and a smaller one inside
 typedef struct {
 	WINDOW *border, *content;
 } WindowWithBorder;
 
-WindowWithBorder *editorWindow;
+// editor -> where the editing happens
+// view -> ascii representation of hex
+// status -> shows information
+WindowWithBorder *editorWindow, *viewWindow, *statusBar;
 
+// -------- -------------- -----------
+
+// we have oop at home
 // -------- window methods -----------
 
 void printToWindow(WindowWithBorder *window, const char *fmt, ...) {
@@ -108,8 +124,11 @@ void updateWindow(WindowWithBorder *window) {
 
 // -------- -------------- -----------
 
+// -------- initialization -----------
+
 void cleanup(void) {
 	endwin();
+	destroyWindow(editorWindow); // this function already checks for null
 	if (fileData.fileData != NULL) {
 		free(fileData.fileData);
 	}
@@ -170,6 +189,10 @@ int parseArguments(int argc, char **argv) {
 	return OK;
 }
 
+// -------- -------------- -----------
+
+// -------- file handling -----------
+
 int openFile(char *filename) {
 	FILE *fp = fopen(filename, "rb");
 
@@ -208,6 +231,9 @@ int openFile(char *filename) {
 	return OK;
 }
 
+// -------- -------------- -----------
+
+// -------- editing -----------
 void handleCommand(char ch) {
 	switch (ch) {
 	case EditorCursorUp:
@@ -249,6 +275,8 @@ void handleCommand(char ch) {
 		break;
 	}
 }
+
+// -------- -------------- -----------
 
 int main(int argc, char **argv) {
 	parseArguments(argc, argv);
