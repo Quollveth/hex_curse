@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 enum editorKeys {
@@ -21,6 +22,7 @@ enum editorKeys {
 
 // Passed as commandline arguments
 struct {
+	struct termios originalTermios;
 	int bytesPerLine;
 	char *filename;
 } editorSettings;
@@ -51,6 +53,18 @@ typedef struct {
 // status -> shows information
 WindowWithBorder *editorWindow, *viewWindow, *statusBar;
 
+//
+// TODO: remove hacks
+void debugPrint(const char *fmt, ...) {
+	wclear(statusBar->content);
+	va_list argp;
+	va_start(argp, fmt);
+	vw_printw(statusBar->content, fmt, argp);
+	va_end(argp);
+	wrefresh(statusBar->content);
+}
+//
+
 // -------- -------------- -----------
 
 // we have oop at home
@@ -61,7 +75,6 @@ void printToWindow(WindowWithBorder *window, const char *fmt, ...) {
 	va_start(argp, fmt);
 	vw_printw(window->content, fmt, argp);
 	va_end(argp);
-	wrefresh(window->content);
 }
 
 WindowWithBorder *createWindow(bool addBorder, int lines, int cols, int y, int x) {
@@ -122,7 +135,8 @@ void updateWindow(WindowWithBorder *window) {
 // -------- initialization -----------
 
 void cleanup(void) {
-	destroyWindow(editorWindow); // this function already checks for null
+	tcsetattr(STDIN_FILENO, TCSANOW, &editorSettings.originalTermios); // reset the terminal
+	destroyWindow(editorWindow);									   // this function already checks for null
 	if (fileData.fileData != NULL) {
 		free(fileData.fileData);
 	}
@@ -148,8 +162,11 @@ int initUI() {
 
 	// Enable ctrl-z and ctrl-s keys
 	struct termios term;
+
 	err = tcgetattr(STDIN_FILENO, &term);
 	if (err == ERR) return ERR;
+
+	editorSettings.originalTermios = term;
 
 	term.c_cc[VSTOP] = _POSIX_VDISABLE;
 	term.c_cc[VSUSP] = _POSIX_VDISABLE;
@@ -168,6 +185,7 @@ int initUI() {
 		0,		   // start at the top
 		0		   // start at the left
 	);
+	if (editorWindow == NULL) return ERR;
 
 	viewWindow = createWindow(
 		TRUE,	   // add border
@@ -176,6 +194,10 @@ int initUI() {
 		0,		   // start at the top
 		COLS / 2   // start halfway at the window horizontally
 	);
+	if (viewWindow == NULL) {
+		destroyWindow(editorWindow);
+		return ERR;
+	}
 
 	statusBar = createWindow(
 		FALSE,	   // no border
@@ -184,12 +206,15 @@ int initUI() {
 		LINES - 1, // start at the end of main windows
 		0		   // start at the left
 	);
-
-	printToWindow(statusBar, "Status bar works!!\n");
+	if (statusBar == NULL) {
+		destroyWindow(editorWindow);
+		destroyWindow(viewWindow);
+		return ERR;
+	}
 
 	// Setup global window data
-	screenData.viewStart = 20;
-	screenData.viewSize = LINES - 2;
+	screenData.viewStart = 0;
+	screenData.viewSize = LINES - 3; // 1 for the status bar and 2 for the border
 	screenData.cursorY = 0;
 	screenData.cursorX = 0;
 
@@ -205,6 +230,9 @@ int parseArguments(int argc, char **argv) {
 	int fileNameLen = strlen(argv[1]);
 	editorSettings.filename = malloc(fileNameLen);
 	strcpy(editorSettings.filename, argv[1]);
+
+	editorSettings.bytesPerLine = 8;
+
 	return OK;
 }
 
@@ -212,7 +240,7 @@ int parseArguments(int argc, char **argv) {
 
 // -------- file handling -----------
 
-int openFile(char *filename) {
+int dumpFile(char *filename) {
 	FILE *fp = fopen(filename, "rb");
 
 	if (fp == NULL) return ERR;
@@ -255,7 +283,51 @@ int openFile(char *filename) {
 // -------- editing -----------
 void handleCommand(char ch);
 
-// -------- -------------- -----------
+// -------- ------- -----------
+
+// -------- UI -----------
+void updateView() {
+	// Wipe the window and start fresh
+	wclear(editorWindow->content);
+	wmove(editorWindow->content, 0, 0);
+
+	// HACK: this may give an off by one error? not sure
+	size_t startingLine = screenData.viewStart / editorSettings.bytesPerLine;
+
+	debugPrint("file has %d lines", fileData.nLines);
+	//clang-format off
+	for(
+		// Starting from the start of the view
+		size_t i = screenData.viewStart;
+		// Continue until we reach the end of the view
+		i < screenData.viewStart + screenData.viewSize;
+		i++
+	){
+		// printing each line
+		// print the line number
+		// then each byte
+
+		// --- line numbers ---
+		// increment by the number of bytes printed
+		printToWindow(editorWindow, "%04x  ", startingLine += editorSettings.bytesPerLine);
+
+		// --- byte data ---
+		// ensure we have enough lines and don't index out of bounds
+		if (startingLine > fileData.nLines) {
+			// HACK: does not print incomplete line
+			printToWindow(editorWindow, "~");
+		} else {
+			printToWindow(editorWindow, "%02x ", fileData.fileData[i]);
+		}
+
+		printToWindow(editorWindow, "\n");
+	}
+	//clang-format on
+	wrefresh(editorWindow->content);
+}
+// -------- -- -----------
+
+// -------- Entrypoint -----------
 
 int main(int argc, char **argv) {
 	parseArguments(argc, argv);
@@ -263,9 +335,9 @@ int main(int argc, char **argv) {
 	initializeEditor();
 	initUI();
 
-	updateWindow(editorWindow);
+	dumpFile(editorSettings.filename);
 
-	editorSettings.bytesPerLine = 8;
+	updateView();
 
 	int ch;
 	while ((ch = getch()) != EditorQuit)
