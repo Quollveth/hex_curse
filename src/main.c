@@ -9,12 +9,6 @@
 #include <termios.h>
 #include <unistd.h>
 
-// Compensate for the character border around
-// While we can use the stats of the content window itself
-// it's more convenient to have the global values be correct
-#define WIN_Y LINES - 3
-#define WIN_X COLS - 2
-
 enum editorKeys {
 	EditorQuit = KEY_F(1),
 	EditorCursorUp = 'k',
@@ -67,6 +61,7 @@ void printToWindow(WindowWithBorder *window, const char *fmt, ...) {
 	va_start(argp, fmt);
 	vw_printw(window->content, fmt, argp);
 	va_end(argp);
+	wrefresh(window->content);
 }
 
 WindowWithBorder *createWindow(bool addBorder, int lines, int cols, int y, int x) {
@@ -127,11 +122,11 @@ void updateWindow(WindowWithBorder *window) {
 // -------- initialization -----------
 
 void cleanup(void) {
-	endwin();
 	destroyWindow(editorWindow); // this function already checks for null
 	if (fileData.fileData != NULL) {
 		free(fileData.fileData);
 	}
+	endwin();
 }
 
 void initializeEditor(void) {
@@ -142,7 +137,7 @@ void initializeEditor(void) {
 	atexit(cleanup);
 }
 
-int initializeWindow() {
+int initUI() {
 	initscr();
 
 	int err = OK;
@@ -166,7 +161,31 @@ int initializeWindow() {
 
 	// -------- Windows -----------
 	refresh();
-	editorWindow = createWindow(TRUE, LINES, COLS, 0, 0);
+	editorWindow = createWindow(
+		TRUE,	   // add border
+		LINES - 1, // as tall as the window without status bar
+		COLS / 2,  // half as wide as the window
+		0,		   // start at the top
+		0		   // start at the left
+	);
+
+	viewWindow = createWindow(
+		TRUE,	   // add border
+		LINES - 1, // as tall as the window without status bar
+		COLS / 2,  // half as wide as the window
+		0,		   // start at the top
+		COLS / 2   // start halfway at the window horizontally
+	);
+
+	statusBar = createWindow(
+		FALSE,	   // no border
+		1,		   // 2 lines tall
+		COLS,	   // as wide as the window
+		LINES - 1, // start at the end of main windows
+		0		   // start at the left
+	);
+
+	printToWindow(statusBar, "Status bar works!!\n");
 
 	// Setup global window data
 	screenData.viewStart = 20;
@@ -234,47 +253,7 @@ int openFile(char *filename) {
 // -------- -------------- -----------
 
 // -------- editing -----------
-void handleCommand(char ch) {
-	switch (ch) {
-	case EditorCursorUp:
-		// if at first line scroll up
-		if (screenData.cursorY == 0) {
-			// if we can't scroll up do nothing
-			if (screenData.viewStart == 0) {
-				break;
-			}
-			screenData.viewStart--;
-			break;
-		}
-		screenData.cursorY--;
-		break;
-	case EditorCursorDown:
-		// if at last line scroll down
-		if (screenData.cursorY == WIN_Y) {
-			// if we can't scroll down do nothing
-			// TODO: change to not be a hardcoded value
-			if (screenData.viewStart == fileData.nLines - 1) {
-				break;
-			}
-			screenData.viewStart++;
-			break;
-		}
-		screenData.cursorY++;
-		break;
-	case EditorCursorLeft:
-		if (screenData.cursorX == WIN_X) {
-			break;
-		}
-		screenData.cursorX++;
-		break;
-	case EditorCursorRight:
-		if (screenData.cursorX == 0) {
-			break;
-		}
-		screenData.cursorX--;
-		break;
-	}
-}
+void handleCommand(char ch);
 
 // -------- -------------- -----------
 
@@ -282,7 +261,7 @@ int main(int argc, char **argv) {
 	parseArguments(argc, argv);
 
 	initializeEditor();
-	initializeWindow();
+	initUI();
 
 	updateWindow(editorWindow);
 
@@ -291,5 +270,4 @@ int main(int argc, char **argv) {
 	int ch;
 	while ((ch = getch()) != EditorQuit)
 		;
-	cleanup();
 }
