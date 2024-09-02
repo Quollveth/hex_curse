@@ -25,6 +25,7 @@ enum editorKeys {
 
 struct {
 	int bytesPerLine;
+	char *filename;
 } editorSettings;
 
 struct {
@@ -37,7 +38,75 @@ struct {
 	int viewSize, cursorX, cursorY;
 } screenData;
 
-WINDOW *borderWin, *contentWin;
+typedef struct {
+	WINDOW *border, *content;
+} WindowWithBorder;
+
+WindowWithBorder *editorWindow;
+
+// -------- window methods -----------
+
+void printToWindow(WindowWithBorder *window, const char *fmt, ...) {
+	va_list argp;
+	va_start(argp, fmt);
+	vw_printw(window->content, fmt, argp);
+	va_end(argp);
+}
+
+WindowWithBorder *createWindow(bool addBorder, int lines, int cols, int y, int x) {
+	WindowWithBorder *temp = (WindowWithBorder *)malloc(sizeof(WindowWithBorder));
+	if (temp == NULL) return NULL;
+	temp->border = NULL;
+	temp->content = NULL;
+
+	WINDOW *contentW;
+	if (!addBorder) {
+		contentW = newwin(lines, cols, y, x);
+		temp->content = contentW;
+		return temp;
+	}
+
+	WINDOW *borderW;
+
+	borderW = newwin(lines, cols, y, x);
+	if (borderW == NULL) {
+		free(temp);
+		return NULL;
+	}
+
+	contentW = newwin(lines - 2, cols - 2, y + 1, x + 1);
+	if (contentW == NULL) {
+		delwin(borderW);
+		return NULL;
+	}
+
+	box(borderW, 0, 0);
+
+	wrefresh(borderW);
+
+	temp->border = borderW;
+	temp->content = contentW;
+
+	return temp;
+}
+
+void destroyWindow(WindowWithBorder *window) {
+	if (window == NULL) return;
+	if (window->border != NULL) {
+		delwin(window->border);
+	}
+	if (window->content != NULL) {
+		delwin(window->content);
+	}
+	free(window);
+}
+
+void updateWindow(WindowWithBorder *window) {
+	wrefresh(window->border);
+	wrefresh(window->content);
+}
+
+// -------- -------------- -----------
 
 void cleanup(void) {
 	endwin();
@@ -48,20 +117,14 @@ void cleanup(void) {
 
 void initializeEditor(void) {
 	// We have a lot of global pointers, let's set them all to null
-	borderWin = NULL;
-	contentWin = NULL;
 	fileData.fileData = NULL;
+	editorWindow = NULL;
 	// And someone has to free all of them later
 	atexit(cleanup);
 }
 
 int initializeWindow() {
-	// Initialize all windows
 	initscr();
-	borderWin = newwin(LINES, COLS, 0, 0);
-	contentWin = newwin(LINES - 2, COLS - 2, 1, 1);
-	if (borderWin == NULL || contentWin == NULL) return ERR;
-	box(borderWin, 0, 0); // Border for the border window
 
 	int err = OK;
 	// Terminal settings
@@ -82,18 +145,28 @@ int initializeWindow() {
 	// Disable ctrl-c key
 	if (signal(SIGINT, SIG_IGN) == SIG_ERR) return ERR;
 
+	// -------- Windows -----------
+	refresh();
+	editorWindow = createWindow(TRUE, LINES, COLS, 0, 0);
+
 	// Setup global window data
 	screenData.viewStart = 20;
 	screenData.viewSize = LINES - 2;
 	screenData.cursorY = 0;
 	screenData.cursorX = 0;
 
-	// Refresh window and cursor
-	refresh();
-	wrefresh(borderWin);
-	wmove(contentWin, screenData.cursorY, screenData.cursorX);
-	wrefresh(contentWin);
+	return OK;
+}
 
+int parseArguments(int argc, char **argv) {
+	// TODO: Parse arguments
+	if (argc == 1) {
+		printf("No file provided.\n");
+		return ERR;
+	}
+	int fileNameLen = strlen(argv[1]);
+	editorSettings.filename = malloc(fileNameLen);
+	strcpy(editorSettings.filename, argv[1]);
 	return OK;
 }
 
@@ -177,16 +250,18 @@ void handleCommand(char ch) {
 	}
 }
 
-int main() {
+int main(int argc, char **argv) {
+	parseArguments(argc, argv);
+
 	initializeEditor();
 	initializeWindow();
+
+	updateWindow(editorWindow);
 
 	editorSettings.bytesPerLine = 8;
 
 	int ch;
-	while ((ch = getch()) != EditorQuit) {
-		wmove(contentWin, screenData.cursorY, screenData.cursorX);
-		wrefresh(contentWin);
-	}
+	while ((ch = getch()) != EditorQuit)
+		;
 	cleanup();
 }
