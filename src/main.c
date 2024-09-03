@@ -231,7 +231,7 @@ int parseArguments(int argc, char **argv) {
 	editorSettings.filename = malloc(fileNameLen);
 	strcpy(editorSettings.filename, argv[1]);
 
-	editorSettings.bytesPerLine = 8;
+	editorSettings.bytesPerLine = 32;
 
 	return OK;
 }
@@ -307,17 +307,26 @@ void updateView() {
 		// print the line number
 		// then each byte
 
+		// when out of lines fill the screen with ~
+		if (startingLine > fileData.nLines) {
+			// HACK: does not print incomplete line
+			printToWindow(editorWindow, "~\n");
+			continue;
+		}
+
 		// --- line numbers ---
 		// increment by the number of bytes printed
-		printToWindow(editorWindow, "%04x  ", startingLine += editorSettings.bytesPerLine);
+		printToWindow(editorWindow, "%04x  ", startingLine);
+		startingLine += editorSettings.bytesPerLine;
 
 		// --- byte data ---
 		// ensure we have enough lines and don't index out of bounds
-		if (startingLine > fileData.nLines) {
-			// HACK: does not print incomplete line
-			printToWindow(editorWindow, "~");
-		} else {
-			printToWindow(editorWindow, "%02x ", fileData.fileData[i]);
+
+		for (int j = 0; j < editorSettings.bytesPerLine; j++) {
+			printToWindow(editorWindow, "%02x", fileData.fileData[startingLine + j]);
+			if (j % 2 != 0) {
+				printToWindow(editorWindow, " ");
+			}
 		}
 
 		printToWindow(editorWindow, "\n");
