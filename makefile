@@ -1,6 +1,6 @@
 SRCS = $(wildcard src/*.c)
 TARGET = HexCurse
-LIBS = -lncurses
+LIBS = -lm -lncurses
 CFLAGS = -Wall -Wextra -pedantic -g -std=c11 -D_POSIX_SOURCE
 
 OBJS = $(SRCS:src/%.c=bin/%.o)
