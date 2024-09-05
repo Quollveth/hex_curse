@@ -47,6 +47,7 @@ struct {
 // we just have two windows per window, one with the border and a smaller one inside
 typedef struct {
 	WINDOW *border, *content;
+	unsigned int cols, lines;
 } WindowWithBorder;
 
 // editor -> where the editing happens
@@ -111,6 +112,8 @@ WindowWithBorder *createWindow(bool addBorder, int lines, int cols, int y, int x
 
 	temp->border = borderW;
 	temp->content = contentW;
+	temp->lines = lines - 2;
+	temp->cols = cols - 2;
 
 	return temp;
 }
@@ -251,8 +254,9 @@ int dumpFile(char *filename) {
 	// -------- read file -----------
 
 	fileData.fileData = (uint8_t *)malloc(fileData.filesize);
-	// this memory will be freed at exit, doing it here will lead to a double free
 	if (fileData.fileData == NULL) {
+		free(fileData.fileData);
+		fileData.fileData = NULL;
 		fclose(fp);
 		return ERR;
 	}
@@ -271,6 +275,7 @@ int dumpFile(char *filename) {
 		return ERR;
 	}
 	fclose(fp);
+
 	return OK;
 }
 
@@ -362,42 +367,9 @@ void updateView() {
 	size_t startingOffset = screenData.viewStart;
 
 	// clang-format off
-	for(
-		// Starting from the start of the view
-		size_t i = screenData.viewStart;
-		// Continue until we reach the end of the view
-		i < screenData.viewStart + screenData.viewSize;
-		i++
-	){
-		// printing each line
-		// print the line number
-		// then each byte
+	
+	
 
-		// when out of lines fill the screen with ~
-		if (startingOffset > fileData.nLines) {
-			// HACK: does not print incomplete line
-			printToWindow(editorWindow, "~\n");
-			continue;
-		}
-
-		// --- line numbers ---
-		// increment by the number of bytes printed
-		// TODO: print a separator and reset line number every 2gbs
-		printToWindow(editorWindow, "%04x  ", startingOffset);
-		startingOffset += editorSettings.bytesPerLine;
-
-		// --- byte data ---
-		// ensure we have enough lines and don't index out of bounds
-
-		for (int j = 0; j < editorSettings.bytesPerLine; j++) {
-			printToWindow(editorWindow, "%02x", fileData.fileData[startingOffset + j]);
-			if (j % 2 != 0) {
-				printToWindow(editorWindow, " ");
-			}
-		}
-
-		printToWindow(editorWindow, "\n");
-	}
 	//clang-format on
 	wmove(editorWindow->content, screenData.cursorY, screenData.cursorX);
 	wrefresh(editorWindow->content);
@@ -413,7 +385,6 @@ int main(int argc, char **argv) {
 	initUI();
 
 	dumpFile(editorSettings.filename);
-
 	updateView();
 
 	handleCommand(0);
