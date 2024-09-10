@@ -17,6 +17,8 @@ enum editorKeys {
 	EditorCursorDown = 'j',
 	EditorCursorLeft = 'h',
 	EditorCursorRight = 'l',
+	EditorPageUp = 21, // ctrl + u
+	EditorPageDown = 4 // ctrl + d
 };
 
 // -------- global state -----------
@@ -283,17 +285,17 @@ int dumpFile(char *filename) {
 
 // -------- editing -----------
 void handleCommand(char ch) {
-	switch (ch) {
+	int bytesPerPage = (editorSettings.bytesPerLine * 2) * editorWindow->lines;
 
+	switch (ch) {
 	// -------- cursor movement -----------
 	case EditorCursorUp:
-		// this check should prevent cursor from going negative
-		if (screenData.cursorY == 0) break;
+		// cursor can't go negative
+		if (screenData.cursorY == 0 && screenData.viewStart == 0) break;
 
 		// if we're at the top scroll up the view
-		if (screenData.cursorY == editorSettings.linesToScroll) {
-			// but only if view isn't at the top of the file
-			if (screenData.viewStart != 0) {
+		if (screenData.cursorY <= editorSettings.linesToScroll) {
+			if (screenData.viewStart >= (unsigned int)editorSettings.bytesPerLine * 2) {
 				// scroll by how many characters are in the line, 2 per byte
 				screenData.viewStart -= editorSettings.bytesPerLine * 2;
 				break;
@@ -308,10 +310,9 @@ void handleCommand(char ch) {
 		if ((unsigned int)screenData.cursorY == editorWindow->lines) break;
 
 		// if we're at the bottom scroll down the view
-		if ((unsigned int)screenData.cursorY == editorWindow->lines - editorSettings.linesToScroll) {
-			// but only if view isn't at the bottom of the file
-			// FIX:this lmao
-			if ((unsigned int)screenData.viewStart != editorWindow->lines - editorSettings.linesToScroll) {
+		if ((unsigned int)screenData.cursorY >= editorWindow->lines - editorSettings.linesToScroll) {
+			if ((screenData.viewStart + editorSettings.bytesPerLine) >=
+				fileData.filesize - editorSettings.bytesPerLine) {
 				// scroll by how many characters are in the line, 2 per byte
 				screenData.viewStart += editorSettings.bytesPerLine * 2;
 				break;
@@ -321,7 +322,8 @@ void handleCommand(char ch) {
 		break;
 	case EditorCursorLeft:
 		// If we're at the left (not including line numbers) then stop
-		if (screenData.cursorX == editorSettings.lineNumberSize) {
+		// we need to add 2 for the spaces
+		if (screenData.cursorX == editorSettings.lineNumberSize + 2) {
 			break;
 		}
 		screenData.cursorX--;
@@ -334,7 +336,23 @@ void handleCommand(char ch) {
 		}
 		screenData.cursorX++;
 		break;
+	case EditorPageUp:
+		if (screenData.viewStart <= (unsigned int)bytesPerPage) {
+			screenData.viewStart = 0;
+			break;
+		}
+		screenData.viewStart -= bytesPerPage;
+		break;
+	case EditorPageDown:
+		if (screenData.viewStart + bytesPerPage >= fileData.filesize - editorSettings.bytesPerLine) {
+			screenData.viewStart = fileData.filesize - editorSettings.bytesPerLine;
+			break;
+		}
+		screenData.viewStart += bytesPerPage;
+		break;
 	}
+
+	debugPrint("view: %lu cursor: %d", screenData.viewStart, screenData.cursorY);
 
 	wmove(editorWindow->content, screenData.cursorY, screenData.cursorX);
 	wrefresh(editorWindow->content);
