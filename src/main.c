@@ -230,7 +230,7 @@ int parseArguments(int argc, char **argv) {
 	editorSettings.filename = malloc(fileNameLen);
 	strcpy(editorSettings.filename, argv[1]);
 
-	editorSettings.bytesPerLine = 32;
+	editorSettings.bytesPerLine = 8;
 
 	return OK;
 }
@@ -330,18 +330,16 @@ void handleCommand(char ch) {
 
 	// -------------------
 	case 'u':
-		screenData.viewStart -= editorSettings.bytesPerLine;
+		screenData.viewStart -= editorSettings.bytesPerLine * 2;
 		break;
 	case 'd':
-		screenData.viewStart += editorSettings.bytesPerLine;
+		screenData.viewStart += editorSettings.bytesPerLine * 2;
 		break;
 
 	// -------------------
 	default:
 		break;
 	}
-
-	debugPrint("view starts at %d and ends at %d", screenData.viewStart, screenData.viewStart + screenData.viewSize);
 
 	wmove(editorWindow->content, screenData.cursorY, screenData.cursorX);
 	wrefresh(editorWindow->content);
@@ -365,12 +363,46 @@ void updateView() {
 	wmove(editorWindow->content, 0, 0);
 
 	size_t startingOffset = screenData.viewStart;
+	size_t fileOffset = startingOffset;
 
-	// clang-format off
-	
-	
+	for (unsigned int line = 0; line < editorWindow->lines; line++) {
+		// if more than one line beyond the end of the file do nothing
+		if (fileOffset > fileData.filesize + editorSettings.bytesPerLine) {
+			printToWindow(editorWindow, "~\n");
+			continue;
+		}
 
-	//clang-format on
+		// line numbers
+		printToWindow(editorWindow, "%04x  ", fileOffset);
+
+		// print the line data
+		// bytes per line * 2 since it's 2 characters per byte
+		for (int lineOffset = 0; lineOffset < editorSettings.bytesPerLine * 2; lineOffset++) {
+			// if the file doesn't fill the screen, do not print
+			if (line > fileData.nLines) {
+				fileOffset++;
+				continue;
+			}
+			// we are still in the file
+
+			// print rest of empty line
+			if (fileOffset > fileData.filesize) {
+				printToWindow(editorWindow, " ");
+				fileOffset++;
+				continue;
+			}
+
+			printToWindow(editorWindow, "%02x", fileData.fileData[fileOffset]);
+
+			// split every 2 bytes
+			if (lineOffset % 2 != 0) {
+				printToWindow(editorWindow, " ");
+			}
+			fileOffset++;
+		}
+		printToWindow(editorWindow, "\n");
+	}
+
 	wmove(editorWindow->content, screenData.cursorY, screenData.cursorX);
 	wrefresh(editorWindow->content);
 }
@@ -385,9 +417,11 @@ int main(int argc, char **argv) {
 	initUI();
 
 	dumpFile(editorSettings.filename);
+
 	updateView();
 
 	handleCommand(0);
+
 	int ch;
 	while ((ch = getch()) != EditorQuit) {
 		handleCommand(ch);
