@@ -21,10 +21,11 @@ enum editorKeys {
 
 // -------- global state -----------
 
-// Passed as commandline arguments
 struct {
 	struct termios originalTermios;
-	int bytesPerLine;
+	int bytesPerLine;	// default -> 8
+	int lineNumberSize; // how many characters are in the line number, default -> 4
+	int linesToScroll;	// how close (in lines) the cursor will get to the screen edge before scrolling
 	char *filename;
 } editorSettings;
 
@@ -37,10 +38,9 @@ struct {
 
 // Contains data about the screen
 // viewStart is the position in the file where we start showing the lines
-// viewSize is how much we show and depends on screen size
 struct {
 	size_t viewStart;
-	int viewSize, cursorX, cursorY;
+	int cursorX, cursorY;
 } screenData;
 
 // Instead of offsetting based on the border characters when writing to a screen
@@ -56,7 +56,7 @@ typedef struct {
 WindowWithBorder *editorWindow, *viewWindow, *statusBar;
 
 //
-// TODO: remove hacks
+// HACK: remove debugPrint
 void debugPrint(const char *fmt, ...) {
 	wclear(statusBar->content);
 	va_list argp;
@@ -213,7 +213,6 @@ int initUI() {
 
 	// Setup global window data
 	screenData.viewStart = 0;
-	screenData.viewSize = LINES - 3; // 1 for the status bar and 2 for the border
 	screenData.cursorY = 0;
 	screenData.cursorX = 6; // 4 line numbers are always 4 characters + 2 spaces
 
@@ -221,7 +220,6 @@ int initUI() {
 }
 
 int parseArguments(int argc, char **argv) {
-	// TODO: Parse arguments
 	if (argc == 1) {
 		printf("No file provided.\n");
 		return ERR;
@@ -231,6 +229,8 @@ int parseArguments(int argc, char **argv) {
 	strcpy(editorSettings.filename, argv[1]);
 
 	editorSettings.bytesPerLine = 8;
+	editorSettings.lineNumberSize = 4;
+	editorSettings.linesToScroll = 8;
 
 	return OK;
 }
@@ -287,34 +287,41 @@ void handleCommand(char ch) {
 
 	// -------- cursor movement -----------
 	case EditorCursorUp:
+		// this check should prevent cursor from going negative
+		if (screenData.cursorY == 0) break;
+
 		// if we're at the top scroll up the view
-		if (screenData.cursorY == 0) {
-			// if there's no more view to scroll do nothing
-			if (screenData.viewStart == 0) {
+		if (screenData.cursorY == editorSettings.linesToScroll) {
+			// but only if view isn't at the top of the file
+			if (screenData.viewStart != 0) {
+				// scroll by how many characters are in the line, 2 per byte
+				screenData.viewStart -= editorSettings.bytesPerLine * 2;
 				break;
 			}
-			// TODO: scroll view
-			break;
 		}
 		screenData.cursorY--;
 		break;
 	case EditorCursorDown:
+		// casts to unsigned int to supress comparison of different sigdness warning
+		// cursorY shouldn't be negative due to boundary checkss on cursor movement
+		// a negative cursorY means it is above the start of the screen
+		if ((unsigned int)screenData.cursorY == editorWindow->lines) break;
+
 		// if we're at the bottom scroll down the view
-		// 2 for the borders and 1 for the status bar and 1 for the off by one error
-		if (screenData.cursorY == LINES - 4) {
-			// if there's no more view to scroll do nothing
-			if (screenData.viewStart + screenData.viewSize == fileData.nLines - 1) {
+		if ((unsigned int)screenData.cursorY == editorWindow->lines - editorSettings.linesToScroll) {
+			// but only if view isn't at the bottom of the file
+			// FIX:this lmao
+			if ((unsigned int)screenData.viewStart != editorWindow->lines - editorSettings.linesToScroll) {
+				// scroll by how many characters are in the line, 2 per byte
+				screenData.viewStart += editorSettings.bytesPerLine * 2;
 				break;
 			}
-			// TODO: scroll view
-			break;
 		}
 		screenData.cursorY++;
 		break;
 	case EditorCursorLeft:
 		// If we're at the left (not including line numbers) then stop
-		// line numbers are always 4 characters followed by 2 spaces
-		if (screenData.cursorX == 6) {
+		if (screenData.cursorX == editorSettings.lineNumberSize) {
 			break;
 		}
 		screenData.cursorX--;
@@ -327,18 +334,6 @@ void handleCommand(char ch) {
 		}
 		screenData.cursorX++;
 		break;
-
-	// -------------------
-	case 'u':
-		screenData.viewStart -= editorSettings.bytesPerLine * 2;
-		break;
-	case 'd':
-		screenData.viewStart += editorSettings.bytesPerLine * 2;
-		break;
-
-	// -------------------
-	default:
-		break;
 	}
 
 	wmove(editorWindow->content, screenData.cursorY, screenData.cursorX);
@@ -350,13 +345,13 @@ void handleCommand(char ch) {
 // -------- UI -----------
 void updateView() {
 	// ensure we actually need to update
-	static size_t prevStart = 0;
-	static int prevSize = 0;
+	static size_t prevStart = -1;
+	// initialize to -1 so it underflows and is always different from the starting value
+	// ensuring the first time opening the program will always update
 
-	if (screenData.viewStart == prevStart && screenData.viewSize == prevSize) return;
+	if (screenData.viewStart == prevStart) return;
 
 	prevStart = screenData.viewStart;
-	prevSize = screenData.viewSize;
 
 	// Wipe the window and start fresh
 	wclear(editorWindow->content);
