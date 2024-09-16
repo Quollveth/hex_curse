@@ -28,6 +28,7 @@ struct {
 	int bytesPerLine;	// default -> 8
 	int lineNumberSize; // how many characters are in the line number, default -> 4
 	int linesToScroll;	// how close (in lines) the cursor will get to the screen edge before scrolling
+	int byteGrouping;	// add a space every x bytes
 	char *filename;
 } editorSettings;
 
@@ -112,6 +113,8 @@ WindowWithBorder *createWindow(bool addBorder, int lines, int cols, int y, int x
 
 	wrefresh(borderW);
 
+	nodelay(contentW, TRUE);
+
 	temp->border = borderW;
 	temp->content = contentW;
 	temp->lines = lines - 2;
@@ -137,7 +140,8 @@ void destroyWindow(WindowWithBorder *window) {
 
 void cleanup(void) {
 	tcsetattr(STDIN_FILENO, TCSANOW, &editorSettings.originalTermios); // reset the terminal
-	destroyWindow(editorWindow);									   // this function already checks for null
+
+	destroyWindow(editorWindow); // this function already checks for null
 	if (fileData.fileData != NULL) {
 		free(fileData.fileData);
 	}
@@ -233,6 +237,7 @@ int parseArguments(int argc, char **argv) {
 	editorSettings.bytesPerLine = 8;
 	editorSettings.lineNumberSize = 4;
 	editorSettings.linesToScroll = 8;
+	editorSettings.byteGrouping = 2;
 
 	return OK;
 }
@@ -284,11 +289,18 @@ int dumpFile(char *filename) {
 // -------- -------------- -----------
 
 // -------- editing -----------
+
+bool isHex(char ch) {
+	return (ch >= 48 && ch <= 57) || /* numbers */
+		   (ch >= 65 && ch <= 70) || /* uppercase */
+		   (ch >= 97 && ch <= 102);	 /* lowercase */
+}
+
 void handleCommand(char ch) {
 	int bytesPerPage = (editorSettings.bytesPerLine * 2) * editorWindow->lines;
 
-	switch (ch) {
 	// -------- cursor movement -----------
+	switch (ch) {
 	case EditorCursorUp:
 		// cursor can't go negative
 		if (screenData.cursorY == 0 && screenData.viewStart == 0) break;
@@ -352,8 +364,6 @@ void handleCommand(char ch) {
 		break;
 	}
 
-	debugPrint("view: %lu cursor: %d", screenData.viewStart, screenData.cursorY);
-
 	wmove(editorWindow->content, screenData.cursorY, screenData.cursorX);
 	wrefresh(editorWindow->content);
 }
@@ -361,6 +371,7 @@ void handleCommand(char ch) {
 // -------- ------- -----------
 
 // -------- UI -----------
+
 void updateView() {
 	// ensure we actually need to update
 	static size_t prevStart = -1;
@@ -407,11 +418,13 @@ void updateView() {
 
 			printToWindow(editorWindow, "%02x", fileData.fileData[fileOffset]);
 
-			// split every 2 bytes
-			if (lineOffset % 2 != 0) {
+			fileOffset++;
+
+			if (editorSettings.byteGrouping == 0) continue;
+
+			if (lineOffset % 2 != editorSettings.byteGrouping) {
 				printToWindow(editorWindow, " ");
 			}
-			fileOffset++;
 		}
 		printToWindow(editorWindow, "\n");
 	}
@@ -437,6 +450,7 @@ int main(int argc, char **argv) {
 
 	int ch;
 	while ((ch = getch()) != EditorQuit) {
+		if (ch == ERR) continue; // no command
 		handleCommand(ch);
 		updateView();
 	}
